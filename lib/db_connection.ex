@@ -923,15 +923,34 @@ defmodule DBConnection do
 
   ## Helpers
 
+  @max_retry 0
+  @retry_msleep 500
+
   defp checkout(pool, opts) do
     pool_mod = Keyword.get(opts, :pool, DBConnection.Connection)
-    case apply(pool_mod, :checkout, [pool, opts]) do
+    max_retry = Keyword.get(opts, :max_retry_checkout, @max_retry)
+    case checkout_with_retry(pool_mod, [pool, opts], max_retry, "") do
       {:ok, pool_ref, conn_mod, conn_state} ->
         conn = %DBConnection{pool_mod: pool_mod, pool_ref: pool_ref,
           conn_mod: conn_mod, conn_ref: make_ref()}
         {conn, conn_state}
       {:error, err} ->
         raise err
+    end
+  end
+
+  defp checkout_with_retry(_pool_mod, _opts, max_retry, error) when max_retry < 0 do
+    error
+  end
+  defp checkout_with_retry(pool_mod, opts, max_retry, _error) do
+    case apply(pool_mod, :checkout, opts) do
+      {:ok, _pool_ref, _conn_mod, _conn_state} = ok -> ok
+      {:error, _err} = error ->
+        if max_retry > 0 do
+          retry_msleep = Keyword.get(opts, :retry_checkout_msleep, @retry_msleep)
+          :timer.sleep(retry_msleep)
+        end
+        checkout_with_retry(pool_mod, opts, max_retry - 1, error)
     end
   end
 

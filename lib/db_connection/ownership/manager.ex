@@ -117,8 +117,13 @@ defmodule DBConnection.Ownership.Manager do
         {:reply, {:init, proxy}, state}
       :not_found ->
         {:shared, shared} = mode
-        {:owner, ref, proxy} = Map.fetch!(checkouts, shared)
-        {:reply, {:ok, proxy}, owner_allow(state, caller, ref, proxy)}
+        case Map.fetch(checkouts, shared) do
+          {:ok, {:owner, ref, proxy}} ->
+            {:reply, {:ok, proxy}, owner_allow(state, caller, ref, proxy)}
+          _ ->
+            {proxy, state} = checkout(state, caller, opts)
+            {:reply, {:init, proxy}, state}
+        end
     end
   end
 
